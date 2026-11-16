@@ -40,11 +40,14 @@
   .body-p { text-align:justify; margin:0 0 4mm; }
   .valid { font-weight:700; margin:0 0 8mm; }
 
-  .sigs { display:flex; justify-content:space-between; align-items:flex-end; padding:0 3mm; }
+  .sigs { display:grid; grid-template-columns: 1fr auto 1fr; align-items:start; padding:0 3mm; }
   .sig img { display:block; height:auto; }
-  .sig.v1 img { width:52mm; }
-  .sig.v2 img { width:44mm; margin:0 auto; }
-  .sig.v3 img { width:58mm; }
+  .sig.v1 { justify-self:start; }
+  .sig.v2 { justify-self:center; }
+  .sig.v3 { justify-self:end; }
+  .sig.v1 img { width:52mm; margin-top:0; }
+  .sig.v2 img { width:48mm; margin-top:-8.8mm; }
+  .sig.v3 img { width:56mm; margin-top:2.3mm; }
 
   .stripe { position:absolute; left:0; right:0; bottom:0; height:2.8mm; display:flex; }
   .stripe .r { width:28.6%; background:#d7202a; }
