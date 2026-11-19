@@ -128,24 +128,59 @@
     }
     .controls .hint { color: #5b6780; line-height: 1.5; }
   }
+
+    .controls { display:block; }
+    .controls .row { display:flex; flex-wrap:wrap; align-items:flex-end; gap:12px 18px; margin-top:14px; }
+    .controls .row.actions, .controls .row.history { border-top:1px solid #e3eaf5; padding-top:14px; }
+    .controls .field { display:flex; flex-direction:column; gap:5px; }
+    .controls .field.grow { flex:1; min-width:280px; }
+    .controls .field.grow select { width:100%; }
+    .controls .flabel { font-size:11px; font-weight:700; letter-spacing:.05em; text-transform:uppercase; color:#5b6780; }
+    .controls select, .controls input[type=date] { height:36px; }
+    .controls button, .controls .filebtn { height:36px; display:inline-flex; align-items:center; }
+    .controls .check { height:36px; display:flex; align-items:center; gap:6px; font-weight:600; color:#27334a; }
+    .controls .hint { margin-top:14px; padding-top:12px; border-top:1px solid #e3eaf5; }
+  .stripe, .stripe > div { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
+  .sig img, .logo { -webkit-print-color-adjust: exact; print-color-adjust: exact; }
 </style>
 </head>
 <body>
 <div class="controls">
   <div class="brand">Certificate of Inspection Generator</div>
-  <label>Certificate
-    <select id="certSel">
-      <option value="boom">Boom truck</option>
-      <option value="heavy">Heavy equipment (excavator)</option>
-    </select>
-  </label>
-  <label>Inspection date <input type="date" id="inspDate"></label>
-  <label><input type="checkbox" id="boldToggle"> <b>Bold</b> data values</label>
-  <button class="primary" id="printBtn" type="button">Print</button>
-  <button id="saveBtn" type="button">Save record (.json)</button>
-  <label class="filebtn">Load record <input type="file" id="loadFile" accept=".json,application/json"></label>
-  <button id="resetBtn" type="button">Reset to sample</button>
-  <div class="hint">Choose a certificate from the dropdown. Click any highlighted field to edit it. The inspection date fills the date of inspection, the certification sentence and the validity date (one year later). Signatures, logo, stripe and fixed wording are locked.</div>
+
+  <div class="row settings">
+    <div class="field">
+      <span class="flabel">Certificate</span>
+      <select id="certSel">
+        <option value="boom">Boom truck</option>
+        <option value="heavy">Heavy equipment (excavator)</option>
+      </select>
+    </div>
+    <div class="field">
+      <span class="flabel">Inspection date</span>
+      <input type="date" id="inspDate">
+    </div>
+    <label class="check"><input type="checkbox" id="boldToggle"> Bold data values</label>
+  </div>
+
+  <div class="row actions">
+    <button class="primary" id="printBtn" type="button">Print</button>
+    <button id="pdfBtn" type="button">Download PDF</button>
+    <button id="histSaveBtn" type="button">Save to history</button>
+    <button id="saveBtn" type="button">Save record (.json)</button>
+    <label class="filebtn">Load record <input type="file" id="loadFile" accept=".json,application/json"></label>
+    <button id="resetBtn" type="button">Reset to sample</button>
+  </div>
+
+  <div class="row history">
+    <div class="field grow">
+      <span class="flabel">History</span>
+      <select id="histSel"></select>
+    </div>
+    <button id="histOpenBtn" type="button">Open</button>
+  </div>
+
+  <div class="hint">Choose a certificate, then click any highlighted field to edit it. The inspection date fills the date of inspection, the certification sentence and the validity date (one year later). Signatures, logo, stripe and fixed wording are locked. Your edits are saved automatically in this browser. For Download PDF, choose "Save as PDF" in the print window, set Scale to 100% and Margins to Default.</div>
 </div>
 <div class="page" id="pageBoom">
 
@@ -232,11 +267,11 @@
   const MONTHS = ['January','February','March','April','May','June','July','August','September','October','November','December'];
   const CERTS = {
     boom: {
-      pageId: 'pageBoom', date: '2026-07-16',
+      label: 'Boom truck', pageId: 'pageBoom', date: '2026-07-16',
       defaults: { company:'YUVAL TRUCKING', checklist:'036225', status:'FIT FOR OPERATION', type:'BOOM TRUCK', modelNo:'N/A', brand:'SINOTRUK', fileNo:'130010002170798', fuel:'Diesel', engineNo:'WD6 1547260317503077', yearModel:'2026', site:'Purok 6, Brgy. Talipapa, Cabanatuan City' }
     },
     heavy: {
-      pageId: 'pageHeavy', date: '2026-02-20',
+      label: 'Heavy equipment', pageId: 'pageHeavy', date: '2026-02-20',
       defaults: { company:'YUVAL TRUCKING', checklist:'035443', status:'FIT FOR OPERATION', type:'EXCAVATOR', modelNo:'XE60GA', brand:'XCMG', serialNo:'XUGA0601XLKA03588', power:'Diesel', ratePower:'35.9kW', yearModel:'2025', site:'Purok 6, Brgy. Talipapa, Cabanatuan City' }
     }
   };
@@ -293,6 +328,7 @@
 
   function showCert(type) {
     current = type;
+    if (typeof scheduleDraft === 'function') scheduleDraft();
     Object.keys(CERTS).forEach((k) => pageOf(k).classList.toggle('hidden', k !== type));
     $('#certSel').value = type;
     $('#inspDate').value = state[type];
@@ -316,6 +352,14 @@
   });
 
   $('#printBtn').addEventListener('click', () => window.print());
+
+  $('#pdfBtn').addEventListener('click', function () {
+    const d = readFields(current);
+    const prev = document.title;
+    document.title = 'Certificate of Inspection - ' + CERTS[current].label + ' - ' + (d.serialNo || d.fileNo || d.checklist || 'record');
+    window.print();
+    setTimeout(() => { document.title = prev; }, 1000);
+  });
 
   $('#saveBtn').addEventListener('click', function () {
     const data = readFields(current);
@@ -360,8 +404,77 @@
     el.addEventListener('keydown', (e) => { if (e.key === 'Enter') e.preventDefault(); });
   });
 
+  // ----- autosave draft, restore on open, and saved history (nothing is deleted) -----
+  const HIST_KEY = 'yuvalCertHistory';
+  const DRAFT_KEY = 'yuvalCertDraft';
+  const readJSON = (k, fallback) => {
+    try { return JSON.parse(localStorage.getItem(k)) || fallback; } catch (e) { return fallback; }
+  };
+
+  function refreshHistorySelect(selectId) {
+    const sel = $('#histSel');
+    const list = readJSON(HIST_KEY, []);
+    sel.innerHTML = '';
+    const first = document.createElement('option');
+    first.value = '';
+    first.textContent = list.length ? '-- choose a saved certificate (' + list.length + ') --' : '-- no saved certificates yet --';
+    sel.appendChild(first);
+    list.slice().reverse().forEach((entry) => {
+      const d = entry.data || {};
+      const o = document.createElement('option');
+      o.value = entry.id;
+      o.textContent = new Date(entry.savedAt).toLocaleString() + ' | ' + CERTS[entry.certType].label + ' | ' +
+        (d.serialNo || d.fileNo || '') + (d.checklist ? ' | checklist ' + d.checklist : '');
+      sel.appendChild(o);
+    });
+    if (selectId) sel.value = selectId;
+  }
+
+  function saveDraft() {
+    const draft = { current: current, boom: readFields('boom'), heavy: readFields('heavy') };
+    try { localStorage.setItem(DRAFT_KEY, JSON.stringify(draft)); } catch (e) { /* storage full or blocked */ }
+  }
+  let draftTimer = null;
+  function scheduleDraft() { clearTimeout(draftTimer); draftTimer = setTimeout(saveDraft, 300); }
+  document.addEventListener('input', scheduleDraft);
+  document.addEventListener('change', scheduleDraft);
+
+  $('#histSaveBtn').addEventListener('click', function () {
+    const list = readJSON(HIST_KEY, []);
+    const id = String(Date.now());
+    list.push({ id: id, savedAt: new Date().toISOString(), certType: current, data: readFields(current) });
+    try { localStorage.setItem(HIST_KEY, JSON.stringify(list)); } catch (e) { alert('Could not save to history: browser storage is full.'); return; }
+    refreshHistorySelect(id);
+    const btn = this;
+    btn.textContent = 'Saved';
+    setTimeout(() => { btn.textContent = 'Save to history'; }, 1500);
+  });
+
+  $('#histOpenBtn').addEventListener('click', function () {
+    const id = $('#histSel').value;
+    if (!id) return;
+    const entry = readJSON(HIST_KEY, []).find((e) => e.id === id);
+    if (!entry) return;
+    const type = entry.certType;
+    state[type] = (entry.data && entry.data.inspDate) || CERTS[type].date;
+    showCert(type);
+    applyFields(type, entry.data || {});
+    scheduleDraft();
+  });
+
+  // Start-up: defaults, then the last working draft (if any), then history list
   Object.keys(CERTS).forEach((type) => applyFields(type, CERTS[type].defaults));
-  showCert('boom');
+  const draft = readJSON(DRAFT_KEY, null);
+  if (draft) {
+    Object.keys(CERTS).forEach((type) => {
+      if (draft[type]) {
+        state[type] = draft[type].inspDate || CERTS[type].date;
+        applyFields(type, draft[type]);
+      }
+    });
+  }
+  showCert(draft && CERTS[draft.current] ? draft.current : 'boom');
+  refreshHistorySelect();
 })();
 </script>
 </body>
